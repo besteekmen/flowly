@@ -41,7 +41,7 @@ export async function signUp(input: SignUpInput): Promise<Session> {
   }
   const user: StoredUser = {
     id: uid("user"),
-    name: input.name.trim() || email.split("@")[0],
+    name: input.name.trim() || email.split("@")[0] || "Flowly user",
     email,
     avatarUrl: null,
     provider: "password",
