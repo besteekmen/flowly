@@ -1,5 +1,6 @@
 import { Link, useNavigate } from "@tanstack/react-router";
 import { LogOut, User as UserIcon } from "lucide-react";
+import { toast } from "sonner";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import {
@@ -19,9 +20,14 @@ export function AppHeader({ user }: { user: User }) {
   const { setUser } = useAuth();
 
   const signOut = async () => {
-    await api.auth.signOut();
-    setUser(null);
-    void navigate({ to: "/login", replace: true });
+    try {
+      await api.auth.signOut();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Could not contact the server.");
+    } finally {
+      setUser(null);
+      void navigate({ to: "/login", replace: true });
+    }
   };
 
   const initials = user.name

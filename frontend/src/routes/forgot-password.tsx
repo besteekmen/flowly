@@ -1,5 +1,6 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useState } from "react";
+import { toast } from "sonner";
 import { AuthShell } from "@/components/flowly/auth-shell";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -10,7 +11,10 @@ export const Route = createFileRoute("/forgot-password")({
   head: () => ({
     meta: [
       { title: "Reset your password — Flowly" },
-      { name: "description", content: "Send yourself a password reset link for your Flowly account." },
+      {
+        name: "description",
+        content: "Send yourself a password reset link for your Flowly account.",
+      },
       { property: "og:title", content: "Reset your password — Flowly" },
       { property: "og:description", content: "Send yourself a Flowly password reset link." },
     ],
@@ -35,7 +39,8 @@ function ForgotPasswordPage() {
     >
       {sent ? (
         <p className="rounded-lg bg-accent p-4 text-sm text-accent-foreground">
-          If an account exists for <span className="font-medium">{email}</span>, a reset link is on its way.
+          If an account exists for <span className="font-medium">{email}</span>, a reset link is on
+          its way.
         </p>
       ) : (
         <form
@@ -43,14 +48,27 @@ function ForgotPasswordPage() {
           onSubmit={async (e) => {
             e.preventDefault();
             setBusy(true);
-            await api.auth.requestPasswordReset(email);
-            setBusy(false);
-            setSent(true);
+            try {
+              await api.auth.requestPasswordReset(email);
+              setSent(true);
+            } catch (error) {
+              toast.error(
+                error instanceof Error ? error.message : "Could not request password reset.",
+              );
+            } finally {
+              setBusy(false);
+            }
           }}
         >
           <div className="space-y-2">
             <Label htmlFor="email">Email</Label>
-            <Input id="email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} required />
+            <Input
+              id="email"
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              required
+            />
           </div>
           <Button type="submit" className="w-full" disabled={busy}>
             Send reset link

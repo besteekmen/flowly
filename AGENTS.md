@@ -49,11 +49,13 @@ Use `uv` for Python dependency management.
 Run backend commands from `backend/`.
 
 - `uv sync` — install backend dependencies
+- `uv run uvicorn app.main:app --reload --host 127.0.0.1 --port 8000` — start the FastAPI development server
+- `uv run pytest` — run backend tests
 - `uv add <PACKAGE-NAME>` — add a Python dependency
 - `uv run <COMMAND>` — run a command inside the project environment
 - `uv run python <PYTHON-FILE>` — run a Python file
 
-Add the exact FastAPI development-server and test commands here once the backend project has been created.
+API base: `http://127.0.0.1:8000/api`. Interactive API documentation: `http://127.0.0.1:8000/docs`.
 
 # Development Rules
 

@@ -26,7 +26,10 @@ export const Route = createFileRoute("/profile")({
   head: () => ({
     meta: [
       { title: "Profile & settings — Flowly" },
-      { name: "description", content: "Update your Flowly name, avatar, and password, or delete your account." },
+      {
+        name: "description",
+        content: "Update your Flowly name, avatar, and password, or delete your account.",
+      },
       { property: "og:title", content: "Profile & settings — Flowly" },
       { property: "og:description", content: "Manage your Flowly account details." },
     ],
@@ -50,6 +53,8 @@ function ProfilePage({ user }: { user: User }) {
       const updated = await api.auth.updateProfile({ name, avatarUrl: avatarUrl || null });
       setUser(updated);
       toast.success("Profile saved");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Could not save profile.");
     } finally {
       setBusy(false);
     }
@@ -71,9 +76,14 @@ function ProfilePage({ user }: { user: User }) {
   };
 
   const deleteAccount = async () => {
-    await api.auth.deleteAccount();
-    setUser(null);
-    void navigate({ to: "/", replace: true });
+    try {
+      await api.auth.deleteAccount();
+      // Leave the protected route before clearing auth so its redirect cannot race this navigation.
+      await navigate({ to: "/", replace: true });
+      setUser(null);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Could not delete account.");
+    }
   };
 
   return (
@@ -154,7 +164,8 @@ function ProfilePage({ user }: { user: User }) {
               <AlertDialogHeader>
                 <AlertDialogTitle>Delete your Flowly account?</AlertDialogTitle>
                 <AlertDialogDescription>
-                  Your account, board, and all tasks will be permanently deleted. This can't be undone.
+                  Your account, board, and all tasks will be permanently deleted. This can't be
+                  undone.
                 </AlertDialogDescription>
               </AlertDialogHeader>
               <AlertDialogFooter>

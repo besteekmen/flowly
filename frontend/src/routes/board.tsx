@@ -23,14 +23,24 @@ import { Input } from "@/components/ui/input";
 import { useBoard } from "@/hooks/use-board";
 import { useViewPreferences } from "@/hooks/use-view-preferences";
 import { applyView, hasActiveFilters, summarize } from "@/lib/task-view";
-import { columnTasks, STATUSES, STATUS_LABEL, type CreateTaskInput, type Task, type TaskStatus } from "@/services";
+import {
+  columnTasks,
+  STATUSES,
+  STATUS_LABEL,
+  type CreateTaskInput,
+  type Task,
+  type TaskStatus,
+} from "@/services";
 
 export const Route = createFileRoute("/board")({
   ssr: false,
   head: () => ({
     meta: [
       { title: "My Board — Flowly" },
-      { name: "description", content: "Your private Flowly Kanban board: plan, move, and finish tasks calmly." },
+      {
+        name: "description",
+        content: "Your private Flowly Kanban board: plan, move, and finish tasks calmly.",
+      },
       { property: "og:title", content: "My Board — Flowly" },
       { property: "og:description", content: "Your private Flowly Kanban board." },
     ],
@@ -39,7 +49,8 @@ export const Route = createFileRoute("/board")({
 });
 
 function BoardPage({ user }: { user: Parameters<typeof AppHeader>[0]["user"] }) {
-  const { board, tasks, loading, rename, create, update, remove, move } = useBoard(true);
+  const { board, tasks, loading, error, retry, rename, create, update, remove, move } =
+    useBoard(true);
   const { prefs, setPrefs } = useViewPreferences();
 
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -86,7 +97,8 @@ function BoardPage({ user }: { user: Parameters<typeof AppHeader>[0]["user"] }) 
 
   const handleDrop = (status: TaskStatus) => {
     if (!dragId || !dragEnabled) return;
-    const index = dropTarget?.status === status ? dropTarget.index : columnTasks(tasks, status).length;
+    const index =
+      dropTarget?.status === status ? dropTarget.index : columnTasks(tasks, status).length;
     move.mutate({ taskId: dragId, status, index });
     setDragId(null);
     setDropTarget(null);
@@ -119,7 +131,9 @@ function BoardPage({ user }: { user: Parameters<typeof AppHeader>[0]["user"] }) 
               </form>
             ) : (
               <>
-                <h1 className="truncate text-2xl font-bold tracking-tight">{board?.name ?? "My Board"}</h1>
+                <h1 className="truncate text-2xl font-bold tracking-tight">
+                  {board?.name ?? "My Board"}
+                </h1>
                 <Button
                   variant="ghost"
                   size="sm"
@@ -171,6 +185,13 @@ function BoardPage({ user }: { user: Parameters<typeof AppHeader>[0]["user"] }) 
 
         {loading ? (
           <p className="py-16 text-center text-sm text-muted-foreground">Loading your board…</p>
+        ) : error ? (
+          <div className="py-16 text-center text-sm">
+            <p role="alert">{error.message}</p>
+            <Button variant="outline" className="mt-3" onClick={retry}>
+              Try again
+            </Button>
+          </div>
         ) : tasks.length === 0 ? (
           <div className="card-soft mx-auto max-w-md p-10 text-center">
             <h2 className="text-base font-semibold">Nothing here yet.</h2>
@@ -215,7 +236,7 @@ function BoardPage({ user }: { user: Parameters<typeof AppHeader>[0]["user"] }) 
                       {`Nothing in ${STATUS_LABEL[status]}.`}
                     </p>
                   )}
-                  {items.map((task, index) => (
+                  {items.map((task) => (
                     <TaskCard
                       key={task.id}
                       task={task}
@@ -231,6 +252,11 @@ function BoardPage({ user }: { user: Parameters<typeof AppHeader>[0]["user"] }) 
                         e.preventDefault();
                         const rect = e.currentTarget.getBoundingClientRect();
                         const after = e.clientY > rect.top + rect.height / 2;
+                        if (task.id === dragId) return;
+                        // The API index is in the saved column after removing the dragged task.
+                        const index = columnTasks(tasks, status)
+                          .filter((item) => item.id !== dragId)
+                          .findIndex((item) => item.id === task.id);
                         setDropTarget({ status, index: index + (after ? 1 : 0) });
                       }}
                       onEdit={() => {
@@ -239,7 +265,11 @@ function BoardPage({ user }: { user: Parameters<typeof AppHeader>[0]["user"] }) 
                       }}
                       onDelete={() => setDeleting(task)}
                       onMoveTo={(next) =>
-                        move.mutate({ taskId: task.id, status: next, index: columnTasks(tasks, next).length })
+                        move.mutate({
+                          taskId: task.id,
+                          status: next,
+                          index: columnTasks(tasks, next).length,
+                        })
                       }
                     />
                   ))}

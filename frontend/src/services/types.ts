@@ -81,7 +81,16 @@ export interface UpdateProfileInput {
   avatarUrl?: string | null;
 }
 
-export class ApiError extends Error {}
+export class ApiError extends Error {
+  constructor(
+    message: string,
+    public status?: number,
+    public code?: string,
+  ) {
+    super(message);
+    this.name = "ApiError";
+  }
+}
 
 export const PRIORITIES: Priority[] = ["low", "medium", "high"];
 
