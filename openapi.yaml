@@ -1,0 +1,893 @@
+openapi: 3.0.3
+info:
+  title: Flowly v1 API
+  version: 1.0.0
+  description: |-
+    Contract for the future backend; no backend is implemented by this document.
+    Product source: _docs/specs.md. Operation/type source: frontend/src/services/.
+    All paths are relative to /api. JSON field names match frontend types.
+
+    Bearer authentication is required unless explicitly overridden. Tokens have a finite
+    lifetime; on expiration sign in again. No refresh-token feature is specified.
+    The future service adapter consumes AuthSession token metadata while exposing the
+    existing Session { user } shape. Passwords are never returned or stored as plaintext.
+    All board/task reads and writes must enforce authenticated ownership; never accept
+    ownerId or boardId from task request bodies. IDs remain in responses so the data
+    model can support more boards later, without exposing multiple boards in v1.
+
+    Manual ordering decision: positions are contiguous zero-based integers per column.
+    Create, status changes, deletion and moves preserve this invariant atomically;
+    updatedAt changes for any task whose persisted fields change. The mock renumbers
+    only moveTask, so update/delete can leave gaps and later create operations can
+    produce duplicate positions. This contract makes that difference explicit.
+
+    Known gaps and integration decisions:
+    - Google sign-in currently creates/reuses a hardcoded demo account. The real
+      credential exchange and the no-implicit-account-linking rule are defined here.
+    - Forgot-password currently does nothing; reset completion has no UI/service.
+      resetPassword is the sole extra operation, required to complete the v1 reset flow.
+    - Mock updateTask/deleteTask omit ownership checks; moveTask looks up a task globally.
+      This contradicts the product's private-board requirement and must not be copied.
+    - Mock getSession returns null; the HTTP contract uses 401, mapped to null by the adapter.
+    - Mock sessions have no tokens; authentication responses add bearer-token metadata.
+    - Title validation follows the task form. Six-character new passwords follow the
+      current forms; the product spec does not define a stronger policy.
+
+    Preferences (loadPreferences/savePreferences), columnTasks, filtering, temporary
+    sorting, and BoardSummary calculations remain client-side. Overdue calculation
+    currently uses the device date; summary excludes Done while the overdue filter
+    includes overdue Done tasks. The product does not specify that distinction; no
+    backend overdue policy is introduced. Mock-store helpers are not API operations.
+    No uploads, collaboration, custom columns, search, or other out-of-scope features.
+servers:
+- url: /api
+  description: API base path on the deployment origin; development proxy/origin configuration is deferred.
+security:
+- bearerAuth: []
+tags:
+- name: Authentication
+- name: Account
+- name: Board
+- name: Tasks
+paths:
+  /auth/signup:
+    post:
+      operationId: signUp
+      tags:
+      - Authentication
+      summary: Create an email/password account
+      description: Create the account and its empty My Board atomically, with no email verification, and
+        sign the user in immediately.
+      responses:
+        '201':
+          description: Create an email/password account successful.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthSession'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '500':
+          $ref: '#/components/responses/InternalError'
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SignUpInput'
+  /auth/login:
+    post:
+      operationId: signIn
+      tags:
+      - Authentication
+      summary: Sign in with email and password
+      description: Authenticate a password-provider account and issue a bearer token.
+      responses:
+        '200':
+          description: Sign in with email and password successful.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthSession'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/InvalidCredentials'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '500':
+          $ref: '#/components/responses/InternalError'
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SignInInput'
+  /auth/google:
+    post:
+      operationId: signInWithGoogle
+      tags:
+      - Authentication
+      summary: Sign in or sign up with Google
+      description: 'Contract decision: exchange a Google ID token for a Flowly bearer token. The backend
+        validates signature, issuer, audience and expiry and identifies the account by Google subject.
+        On first signup create an empty My Board. Never silently merge a password account with a matching
+        email; return 409. The current zero-argument service uses a demo account; a future adapter must
+        obtain the Google credential.'
+      responses:
+        '200':
+          description: Sign in or sign up with Google successful.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthSession'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/InvalidCredentials'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '500':
+          $ref: '#/components/responses/InternalError'
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GoogleSignInInput'
+  /auth/session:
+    get:
+      operationId: getSession
+      tags:
+      - Authentication
+      summary: Get the signed-in user
+      description: Return the current Session. Unlike the mock Session | null result, absent/invalid authentication
+        returns 401. The future service adapter should return null without a token and map 401 to null;
+        other failures remain errors.
+      responses:
+        '200':
+          description: Get the signed-in user successful.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Session'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /auth/logout:
+    post:
+      operationId: signOut
+      tags:
+      - Authentication
+      summary: Sign out
+      description: Invalidate the presented bearer token. The client clears its local credentials even
+        if the server returns 401; without a token the adapter can complete locally.
+      responses:
+        '204':
+          description: Successful; no response body.
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /auth/password-reset/request:
+    post:
+      operationId: requestPasswordReset
+      tags:
+      - Authentication
+      summary: Request a password-reset email
+      description: For an eligible password account, send an expiring single-use reset link. Always return
+        the same 202 response for valid email input, including nonexistent or Google-only accounts, to
+        avoid account enumeration. This is the password-reset flow required by the spec, not a notification/reminder
+        feature.
+      responses:
+        '202':
+          description: Request a password-reset email successful.
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '500':
+          $ref: '#/components/responses/InternalError'
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PasswordResetRequest'
+  /auth/password-reset/confirm:
+    post:
+      operationId: resetPassword
+      tags:
+      - Authentication
+      summary: Complete a password reset
+      description: Required by the product spec but missing from the current frontend service/UI. Consume
+        the email reset token and set the new password for a password account. Revoke all account sessions;
+        the user signs in again. Invalid, expired, used or ineligible tokens return 400 with code invalid_reset_token.
+        No bearer token is needed; the reset token authorizes this operation.
+      responses:
+        '204':
+          description: Successful; no response body.
+        '400':
+          description: Invalid request fields (validation_error), or invalid/expired/used/ineligible reset
+            token (invalid_reset_token).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '500':
+          $ref: '#/components/responses/InternalError'
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ResetPasswordInput'
+  /me/password:
+    post:
+      operationId: changePassword
+      tags:
+      - Account
+      summary: Change the current password
+      description: Password accounts only. Map service arguments current and next to currentPassword and
+        newPassword. An incorrect current password returns 400 with code incorrect_current_password. Revoke
+        other sessions; retain the presented session.
+      responses:
+        '204':
+          description: Successful; no response body.
+        '400':
+          description: Invalid request fields (validation_error) or incorrect current password (incorrect_current_password).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '500':
+          $ref: '#/components/responses/InternalError'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ChangePasswordInput'
+  /me:
+    patch:
+      operationId: updateProfile
+      tags:
+      - Account
+      summary: Update name or avatar
+      description: Edit only the authenticated user. Avatar is a URL, matching the existing profile form.
+        Omitted fields stay unchanged; null clears avatarUrl. Email and authentication provider are read-only.
+      responses:
+        '200':
+          description: Update name or avatar successful.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalError'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateProfileInput'
+    delete:
+      operationId: deleteAccount
+      tags:
+      - Account
+      summary: Delete the account and all its data
+      description: The UI must obtain confirmation before calling. Permanently and atomically delete the
+        user, all owned boards and tasks, and revoke all sessions. No request body is required by the
+        existing service.
+      responses:
+        '204':
+          description: Successful; no response body.
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /board:
+    get:
+      operationId: getBoard
+      tags:
+      - Board
+      summary: Get the current private board
+      description: Resolve the authenticated user's sole v1 board. Normally created at signup; if absent,
+        ensure My Board exists as the mock does. No board selection, creation or listing API is exposed.
+      responses:
+        '200':
+          description: Get the current private board successful.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Board'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalError'
+    patch:
+      operationId: renameBoard
+      tags:
+      - Board
+      summary: Rename the current private board
+      description: Resolve/ensure the current board as getBoard does. Trim the submitted name; use My
+        Board if blank.
+      responses:
+        '200':
+          description: Rename the current private board successful.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Board'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalError'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RenameBoardInput'
+  /board/tasks:
+    get:
+      operationId: listTasks
+      tags:
+      - Tasks
+      summary: List all tasks on the current board
+      description: Resolve/ensure the current board. Return the full array, including Done tasks; an empty
+        board returns []. No pagination, search or server-side filter/sort parameters. The frontend derives
+        counts, filters and temporary sorting without altering manual positions.
+      responses:
+        '200':
+          description: List all tasks on the current board successful.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TaskList'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalError'
+    post:
+      operationId: createTask
+      tags:
+      - Tasks
+      summary: Create a task
+      description: Resolve/ensure the current board; assign its boardId and a server-generated id/timestamps.
+        Append to the selected column. Ownership, position and timestamps are not client-writable.
+      responses:
+        '201':
+          description: Create a task successful.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Task'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalError'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateTaskInput'
+  /board/tasks/{taskId}:
+    parameters:
+    - $ref: '#/components/parameters/TaskId'
+    patch:
+      operationId: updateTask
+      tags:
+      - Tasks
+      summary: Edit a task
+      description: Look up the task only within the authenticated user's current board. If status changes,
+        append to the destination column; otherwise preserve manual order. Apply the supplied fields and
+        refresh updatedAt. Status changes and column normalization are atomic.
+      responses:
+        '200':
+          description: Edit a task successful.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Task'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateTaskInput'
+    delete:
+      operationId: deleteTask
+      tags:
+      - Tasks
+      summary: Delete a task
+      description: The UI must obtain confirmation before calling. Delete only from the authenticated
+        user's current board; compact the remaining column positions atomically. A missing or unowned
+        task returns 404, unlike the mock's silent success.
+      responses:
+        '204':
+          description: Successful; no response body.
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /board/tasks/{taskId}/move:
+    parameters:
+    - $ref: '#/components/parameters/TaskId'
+    post:
+      operationId: moveTask
+      tags:
+      - Tasks
+      summary: Move or reorder a task
+      description: Map MoveTaskInput.taskId to the path and send status/index in the body. Scope the task
+        to the current user and board. Remove it before computing the destination index, clamp the index,
+        insert it, and renumber affected columns atomically. Works within one column or across columns.
+        Return the complete updated board Task[] so the existing query cache can be replaced. A missing/unowned
+        task returns 404; the mock can silently succeed or mutate unowned tasks.
+      responses:
+        '200':
+          description: Move or reorder a task successful.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TaskList'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MoveTaskInput'
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      description: 'Send Authorization: Bearer <accessToken>. Token encoding is implementation-defined.'
+  parameters:
+    TaskId:
+      name: taskId
+      in: path
+      required: true
+      description: Task identifier within the current authenticated user's private board.
+      schema:
+        $ref: '#/components/schemas/Id'
+  schemas:
+    Id:
+      type: string
+      minLength: 1
+      description: Opaque server-generated identifier; clients must not assume a UUID format.
+    Priority:
+      type: string
+      enum:
+      - low
+      - medium
+      - high
+    TaskStatus:
+      type: string
+      enum:
+      - todo
+      - in_progress
+      - done
+      description: 'Fixed columns: To Do, In Progress, Done. No custom columns in v1.'
+    AuthProvider:
+      type: string
+      enum:
+      - password
+      - google
+    DueDate:
+      type: string
+      format: date
+      nullable: true
+      description: Calendar date YYYY-MM-DD, without a time or timezone; null means no due date.
+    AvatarUrl:
+      type: string
+      format: uri
+      nullable: true
+      description: Avatar URL, or null to clear it. No upload endpoint in v1.
+    NewPassword:
+      type: string
+      format: password
+      writeOnly: true
+      minLength: 6
+      description: Minimum six characters matches the current signup/change-password forms; the product
+        spec does not prescribe a password policy.
+    User:
+      type: object
+      additionalProperties: false
+      properties:
+        id:
+          $ref: '#/components/schemas/Id'
+        name:
+          type: string
+        email:
+          type: string
+          format: email
+        avatarUrl:
+          $ref: '#/components/schemas/AvatarUrl'
+        provider:
+          $ref: '#/components/schemas/AuthProvider'
+      required:
+      - id
+      - name
+      - email
+      - avatarUrl
+      - provider
+    Board:
+      type: object
+      additionalProperties: false
+      properties:
+        id:
+          $ref: '#/components/schemas/Id'
+        ownerId:
+          $ref: '#/components/schemas/Id'
+        name:
+          type: string
+      required:
+      - id
+      - ownerId
+      - name
+    Task:
+      type: object
+      additionalProperties: false
+      properties:
+        id:
+          $ref: '#/components/schemas/Id'
+        boardId:
+          $ref: '#/components/schemas/Id'
+        title:
+          type: string
+          minLength: 1
+          pattern: \S
+          description: Trimmed on write; must contain a non-whitespace character.
+        description:
+          type: string
+          description: Plain text, trimmed on write; may be empty.
+        dueDate:
+          $ref: '#/components/schemas/DueDate'
+        priority:
+          $ref: '#/components/schemas/Priority'
+        status:
+          $ref: '#/components/schemas/TaskStatus'
+        position:
+          type: integer
+          minimum: 0
+          description: Zero-based saved order within the status column; server managed.
+        createdAt:
+          type: string
+          format: date-time
+          description: Server-generated UTC timestamp.
+        updatedAt:
+          type: string
+          format: date-time
+          description: Server-generated UTC timestamp; updated when task content, status or position changes.
+      required:
+      - id
+      - boardId
+      - title
+      - description
+      - dueDate
+      - priority
+      - status
+      - position
+      - createdAt
+      - updatedAt
+    TaskList:
+      type: array
+      items:
+        $ref: '#/components/schemas/Task'
+      description: All tasks of the current board, ordered by ascending position. Equal positions in different
+        columns have no defined relative order.
+    Session:
+      type: object
+      additionalProperties: false
+      properties:
+        user:
+          $ref: '#/components/schemas/User'
+      required:
+      - user
+    AuthSession:
+      type: object
+      additionalProperties: false
+      properties:
+        user:
+          $ref: '#/components/schemas/User'
+        accessToken:
+          type: string
+          minLength: 1
+          description: Flowly bearer token. Its encoding is opaque to clients.
+        tokenType:
+          type: string
+          enum:
+          - Bearer
+        expiresIn:
+          type: integer
+          minimum: 1
+          description: Token lifetime in seconds from issuance.
+      required:
+      - user
+      - accessToken
+      - tokenType
+      - expiresIn
+    SignUpInput:
+      type: object
+      additionalProperties: false
+      properties:
+        name:
+          type: string
+          description: Trimmed; an empty result falls back to the email local part, matching the mock.
+        email:
+          type: string
+          format: email
+          description: Trimmed and lowercased before uniqueness checks.
+        password:
+          $ref: '#/components/schemas/NewPassword'
+      required:
+      - name
+      - email
+      - password
+    SignInInput:
+      type: object
+      additionalProperties: false
+      properties:
+        email:
+          type: string
+          format: email
+          description: Trimmed and lowercased.
+        password:
+          type: string
+          format: password
+          writeOnly: true
+          minLength: 1
+      required:
+      - email
+      - password
+    GoogleSignInInput:
+      type: object
+      additionalProperties: false
+      properties:
+        idToken:
+          type: string
+          minLength: 1
+          writeOnly: true
+          description: Google ID token obtained through Google sign-in; never a demo email or client-supplied
+            user profile.
+      required:
+      - idToken
+    PasswordResetRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        email:
+          type: string
+          format: email
+      required:
+      - email
+    ResetPasswordInput:
+      type: object
+      additionalProperties: false
+      properties:
+        token:
+          type: string
+          minLength: 1
+          writeOnly: true
+          description: Unexpired single-use token delivered by the password-reset email.
+        newPassword:
+          $ref: '#/components/schemas/NewPassword'
+      required:
+      - token
+      - newPassword
+    ChangePasswordInput:
+      type: object
+      additionalProperties: false
+      properties:
+        currentPassword:
+          type: string
+          format: password
+          writeOnly: true
+          minLength: 1
+        newPassword:
+          $ref: '#/components/schemas/NewPassword'
+      required:
+      - currentPassword
+      - newPassword
+    UpdateProfileInput:
+      type: object
+      additionalProperties: false
+      properties:
+        name:
+          type: string
+          description: Stored as submitted, matching the current service; email/provider cannot be edited.
+        avatarUrl:
+          $ref: '#/components/schemas/AvatarUrl'
+      description: Omitted properties stay unchanged. An empty object is a no-op.
+    RenameBoardInput:
+      type: object
+      additionalProperties: false
+      properties:
+        name:
+          type: string
+          description: Trimmed; blank names become My Board, matching the existing service.
+      required:
+      - name
+    CreateTaskInput:
+      type: object
+      additionalProperties: false
+      properties:
+        title:
+          type: string
+          minLength: 1
+          pattern: \S
+          description: Trimmed on write; must contain a non-whitespace character.
+        description:
+          type: string
+          description: Plain text, trimmed on write; may be empty.
+        dueDate:
+          $ref: '#/components/schemas/DueDate'
+        priority:
+          $ref: '#/components/schemas/Priority'
+        status:
+          $ref: '#/components/schemas/TaskStatus'
+      required:
+      - title
+      - description
+      - dueDate
+      - priority
+      - status
+    UpdateTaskInput:
+      type: object
+      additionalProperties: false
+      properties:
+        title:
+          type: string
+          minLength: 1
+          pattern: \S
+          description: Trimmed on write; must contain a non-whitespace character.
+        description:
+          type: string
+          description: Plain text, trimmed on write; may be empty.
+        dueDate:
+          $ref: '#/components/schemas/DueDate'
+        priority:
+          $ref: '#/components/schemas/Priority'
+        status:
+          $ref: '#/components/schemas/TaskStatus'
+      description: All fields optional; omitted values remain unchanged. null clears dueDate. An empty
+        object leaves content unchanged but refreshes updatedAt, matching the mock.
+    MoveTaskInput:
+      type: object
+      additionalProperties: false
+      properties:
+        status:
+          $ref: '#/components/schemas/TaskStatus'
+        index:
+          type: integer
+          description: Zero-based destination index after removing this task. Clamp below zero to zero
+            and above the destination length to the end, matching the mock.
+      required:
+      - status
+      - index
+    Error:
+      type: object
+      additionalProperties: false
+      properties:
+        code:
+          type: string
+          description: Machine-readable error code; see response descriptions.
+        message:
+          type: string
+          description: Human-readable message suitable for mapping to the frontend ApiError.
+      required:
+      - code
+      - message
+  responses:
+    BadRequest:
+      description: 'Malformed JSON or invalid fields, including a blank task title. Code: validation_error.'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    Unauthorized:
+      description: 'Missing, expired, revoked or invalid bearer token. Code: unauthorized. The client
+        should clear its session.'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+      headers:
+        WWW-Authenticate:
+          description: Bearer authentication challenge.
+          schema:
+            type: string
+          example: Bearer
+    InvalidCredentials:
+      description: 'Invalid email/password or Google credential. Code: invalid_credentials. Do not disclose
+        which credential failed.'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    Forbidden:
+      description: 'Password operation unavailable for this provider. Code: password_provider_required.'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    NotFound:
+      description: 'Resource does not exist or belongs to another user. Code: not_found. Do not disclose
+        another user''s resources.'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    Conflict:
+      description: 'Email already registered or Google email conflicts with an existing password account.
+        Codes: email_in_use or account_provider_conflict. No implicit provider linking in v1.'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    TooManyRequests:
+      description: 'Rate limit exceeded. Code: rate_limited.'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+      headers:
+        Retry-After:
+          description: Seconds before retrying, when known.
+          schema:
+            type: integer
+            minimum: 1
+    InternalError:
+      description: 'Unexpected server failure. Code: internal_error. Do not return stack traces or secrets.'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
