@@ -59,19 +59,37 @@ for this local homework backend.
 
 ## Behavior and limitations
 
-- All users, boards, tasks, bearer tokens, reset tokens and rate-limit counters are
-  in memory. Restarting or reloading the process loses everything. Use one worker.
-  No SQLite, files, or persistent database store application data.
+- Users, password hashes, boards, tasks, sessions and password-reset tokens are
+  persisted using Python's standard-library `sqlite3` (no added dependency).
+  The default file is `backend/data/flowly.sqlite3`, independent of the working
+  directory. Set `FLOWLY_DATABASE_PATH` to use another file (relative paths resolve
+  from the working directory). Parent directories and tables are created automatically.
+  Local database files are gitignored. Keep the file to retain data across restarts.
+- SQL lives in `app/database.py`; repositories return detached dictionaries, and
+  mutations explicitly save them. Each API request runs in a SQLite transaction
+  with `BEGIN IMMEDIATE`, committing before the response is sent or rolling back
+  on errors. Foreign keys cascade account deletion through all associated data.
+  The schema allows multiple boards per user; v1 still exposes only the first board.
+- Tests use temporary database files. There is no migration from the old volatile
+  store: pre-upgrade memory data cannot be recovered after that process exits.
+  This initial schema uses create-if-absent initialization, without a migration framework.
+  Use one worker: rate limiting and the development outbox are process-local.
+  SQLite serializes writes; requests in one application are serialized with an async lock.
+  Bearer/reset tokens retain their original absolute expiry times across restarts.
+  The database contains credential material and should remain private.
 - Each user has one private board. Every task mutation checks ownership and returns
   404 for missing or unowned tasks. Account deletion removes all owned boards/tasks.
 - Saved positions are contiguous within each column. Moves, status edits, and
   deletions renumber affected columns and update changed tasks' timestamps.
-  Mutations execute without `await` in async handlers, atomically on one event loop.
-  Password hashing also runs on that loop; this is a simple homework server, not
+  Ordering changes commit atomically with the task mutation.
+  Database operations and password hashing run on the event loop; this is a simple homework server, not
   a high-throughput deployment architecture.
 - Authentication operations have a basic in-memory limit of 30 requests per minute
   per client IP and endpoint; limits return 429 with `Retry-After`. Thresholds and
   token lifetimes are implementation choices not prescribed by the contract.
+  Rate counters intentionally remain in memory because they are short-lived (60 seconds)
+  and do not need durable application storage; restarting clears them. The development
+  email outbox also clears on restart, but already issued reset tokens remain usable.
 - Validation errors return the contract's 400 `{code, message}` shape, not 422.
   Dates accept only valid `YYYY-MM-DD` strings. Unexpected fields are rejected.
 - Avatar URL/email validation uses Pydantic's URI/email validators. This can be
@@ -83,4 +101,5 @@ for this local homework backend.
 
 The tests exercise all 17 operations, validate exercised response bodies/statuses
 against the root contract, and test ownership, authentication lifecycle, malformed
-inputs, ordering after mixed mutations, and account deletion.
+inputs, ordering after mixed mutations, account deletion, transaction rollback,
+and persistence/authentication lifecycle across fresh applications.

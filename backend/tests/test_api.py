@@ -298,12 +298,6 @@ def test_internal_error_is_sanitized(client, monkeypatch):
     assert r.json() == {"code": "internal_error", "message": "Unexpected server failure."}
 
 
-def test_new_app_has_no_persisted_data(client):
-    signup(client)
-    fresh = create_app().state.store
-    assert fresh.users == {} and fresh.boards == {} and fresh.tasks == {} and fresh.sessions == {}
-
-
 @pytest.mark.parametrize("origin", ["http://127.0.0.1:5173", "http://localhost:8080", "http://127.0.0.1:4173"])
 def test_local_frontend_cors(client, origin):
     response = client.options("/api/board/tasks", headers={

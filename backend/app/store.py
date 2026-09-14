@@ -1,15 +1,15 @@
-"""Single-process memory only. Restarting the server clears everything.
+"""Application operations backed by SQLite repositories."""
 
-Handlers are async and do not await during store operations, so each mutation is
-atomic on the server's event loop. Do not run multiple workers with this store.
-"""
-
+import asyncio
+import os
 import hashlib
 import hmac
 import secrets
 import time
 from collections import defaultdict, deque
 from datetime import datetime, timezone
+
+from .database import Database, DEFAULT_DATABASE, Repository
 
 TOKEN_TTL = 3600
 RESET_TTL = 900
@@ -40,13 +40,15 @@ def password_matches(password: str, stored: str | None) -> bool:
 
 
 class Store:
-    def __init__(self):
-        self.users: dict[str, dict] = {}
-        self.passwords: dict[str, str] = {}
-        self.boards: dict[str, dict] = {}
-        self.tasks: dict[str, dict] = {}
-        self.sessions: dict[str, tuple[str, float]] = {}
-        self.reset_tokens: dict[str, tuple[str, float]] = {}
+    def __init__(self, database_path=None):
+        self.database = Database(database_path or os.environ.get("FLOWLY_DATABASE_PATH") or DEFAULT_DATABASE)
+        self.lock = asyncio.Lock()
+        self.users = Repository(self.database, "users")
+        self.passwords = Repository(self.database, "passwords", "userId", ("hash",))
+        self.boards = Repository(self.database, "boards")
+        self.tasks = Repository(self.database, "tasks")
+        self.sessions = Repository(self.database, "sessions", "token", ("userId", "expiresAt"))
+        self.reset_tokens = Repository(self.database, "reset_tokens", "token", ("userId", "expiresAt"))
         # Development-only email outbox. No HTTP endpoint exposes these tokens.
         self.outbox: list[dict] = []
         self.rate_hits = defaultdict(deque)
@@ -54,7 +56,7 @@ class Store:
         self.rate_limit = RATE_LIMIT
 
     def user_by_email(self, email):
-        return next((u for u in self.users.values() if u["email"] == email), None)
+        return next(iter(self.users.select("email", email)), None)
 
     def create_user(self, name, email, provider, password=None):
         user = {"id": uid("user"), "name": name, "email": email,
@@ -68,7 +70,7 @@ class Store:
         return user
 
     def board_for(self, user_id):
-        board = next((b for b in self.boards.values() if b["ownerId"] == user_id), None)
+        board = next(iter(self.boards.select("ownerId", user_id)), None)
         if board is None:
             board = {"id": uid("board"), "ownerId": user_id, "name": "My Board"}
             self.boards[board["id"]] = board
@@ -81,27 +83,29 @@ class Store:
                 "tokenType": "Bearer", "expiresIn": TOKEN_TTL}
 
     def revoke_sessions(self, user_id, except_token=None):
-        self.sessions = {t: s for t, s in self.sessions.items()
-                         if s[0] != user_id or t == except_token}
+        for token, session in list(self.sessions.items()):
+            if session[0] == user_id and token != except_token:
+                del self.sessions[token]
 
     def clear_resets(self, user_id):
-        self.reset_tokens = {t: s for t, s in self.reset_tokens.items() if s[0] != user_id}
+        for token, reset in list(self.reset_tokens.items()):
+            if reset[0] == user_id:
+                del self.reset_tokens[token]
         self.outbox = [m for m in self.outbox if m["userId"] != user_id]
 
     def board_tasks(self, board_id):
-        return sorted((t for t in self.tasks.values() if t["boardId"] == board_id),
-                      key=lambda t: t["position"])
+        return self.tasks.select("boardId", board_id, order="position")
 
     def column(self, board_id, status, exclude=None):
         return [t for t in self.board_tasks(board_id)
                 if t["status"] == status and t["id"] != exclude]
 
-    @staticmethod
-    def renumber(column, now):
+    def renumber(self, column, now):
         for index, task in enumerate(column):
             if task["position"] != index:
                 task["position"] = index
                 task["updatedAt"] = now
+            self.tasks[task["id"]] = task
 
     def move(self, task, status, index):
         now = timestamp()

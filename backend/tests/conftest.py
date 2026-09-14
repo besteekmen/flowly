@@ -45,8 +45,8 @@ class ContractClient(TestClient):
 
 
 @pytest.fixture
-def client():
-    with ContractClient(create_app(), raise_server_exceptions=False) as client:
+def client(tmp_path):
+    with ContractClient(create_app(tmp_path / "test.sqlite3"), raise_server_exceptions=False) as client:
         yield client
 
 

@@ -1,7 +1,7 @@
 [project]
 name = "flowly-backend"
 version = "0.1.0"
-description = "Flowly homework API with an in-memory store"
+description = "Flowly homework API with SQLite storage"
 requires-python = ">=3.12"
 dependencies = [
     "fastapi>=0.115,<1",
