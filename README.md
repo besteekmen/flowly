@@ -1,45 +1,80 @@
-# Flowly
+<div align="center">
+  <img src="_docs/assets/flowly-logo.svg" alt="Flowly mark" width="84" height="84" />
+  <h1>Flowly</h1>
+  <p><strong>Keep your work in flow.</strong></p>
+  <p>A full-stack personal Kanban app for organizing tasks across To Do, In Progress, and Done.</p>
+  <p>
+    <a href="#features">Features</a> ·
+    <a href="#how-it-works">How it works</a> ·
+    <a href="#quick-start">Quick start</a> ·
+    <a href="#testing">Testing</a>
+  </p>
+  <p>
+    <img src="https://img.shields.io/badge/React-20232A?logo=react&amp;logoColor=61DAFB" alt="React" />
+    <img src="https://img.shields.io/badge/TypeScript-3178C6?logo=typescript&amp;logoColor=white" alt="TypeScript" />
+    <img src="https://img.shields.io/badge/FastAPI-009688?logo=fastapi&amp;logoColor=white" alt="FastAPI" />
+    <img src="https://img.shields.io/badge/SQLite-003B57?logo=sqlite&amp;logoColor=white" alt="SQLite" />
+    <a href="#testing"><img src="https://img.shields.io/badge/Backend_tests-39_passed-278579" alt="Backend tests: 39 passed in the last verified run" /></a>
+  </p>
+</div>
 
-> Keep your work in flow.
+## 🖼️ A look at Flowly
 
-Flowly is a full-stack personal Kanban application for organizing tasks across **To Do**, **In Progress**, and **Done**. It combines a responsive React interface with a FastAPI backend and persistent SQLite storage to keep everyday task management simple and focused.
+<table>
+  <tr>
+    <th>Desktop board</th>
+    <th>Mobile view · optional</th>
+  </tr>
+  <tr>
+    <td align="center"><strong>Screenshot placeholder</strong><br />Add the three-column board with sample tasks here.</td>
+    <td align="center"><strong>Screenshot placeholder</strong><br />Add the mobile board and task move controls here.</td>
+  </tr>
+</table>
 
-## Key features
+<!-- Replace the placeholder cells with relative image links once screenshots are added. -->
 
-- Email/password signup and login, plus a development Google sign-in stub.
-- A private board for each user, with an editable board name and profile.
-- Task creation, editing, and deletion, with priorities and due dates.
-- Desktop drag-and-drop movement and reordering, plus explicit move controls on mobile.
-- Priority and due-date filters, temporary sorting that preserves manual order, and overdue highlighting.
-- A responsive interface that follows the system's light or dark theme.
-- Persistent accounts, boards, tasks, and sessions that survive backend restarts.
+<a id="features"></a>
 
-## Screenshots
+## ✨ What you can do
 
-*Placeholder: add screenshots of the desktop board and mobile task controls here.*
-
-## Tech stack
-
-| Layer | Technologies |
+| | |
 | --- | --- |
-| Frontend | React, TypeScript, TanStack Start / Router, TanStack Query, Vite, Tailwind CSS, shadcn/ui |
-| Backend | Python, FastAPI, SQLite, uv, pytest |
-| API contract | OpenAPI |
+| **Make it yours** | Sign up with email/password, keep a private board, and edit your profile and board name. A development Google sign-in stub is also available. |
+| **Keep tasks moving** | Create, edit, and delete tasks. Drag to move or reorder on desktop; use explicit move controls on mobile. |
+| **See what needs attention** | Set priorities and due dates, spot overdue tasks, and filter or temporarily sort without changing saved manual order. |
+| **Pick up where you left off** | Accounts, boards, tasks, and sessions survive backend restarts. The responsive UI follows your system's light or dark theme. |
 
-## Architecture
+<a id="how-it-works"></a>
 
-```text
-frontend/        React UI and centralized API services
-backend/         FastAPI application, SQLite storage, and tests
-_docs/specs.md   Product specification
-openapi.yaml     Frontend/backend API contract
+## 🧭 How it works
+
+```mermaid
+flowchart LR
+    User([User]) --> UI[React / TanStack frontend]
+    UI --> Services[Centralized service layer]
+    Services <-->|HTTP / JSON| API[FastAPI API]
+    API <--> DB[(SQLite)]
+    UI --- View[Filters and view preferences stay client-side]
+    Contract[OpenAPI contract] -. defines .-> Services
+    Contract -. defines .-> API
 ```
 
-The frontend communicates with FastAPI through the centralized service layer in `frontend/src/services/`. The backend enforces ownership and persists data through a separate SQLite database layer. Filtering and temporary sorting stay in the browser; saved task order lives in the database.
+The backend checks ownership on private data and saves task order atomically through a separate database layer. The frontend service layer keeps API calls centralized in `frontend/src/services/`.
 
-## Getting started
+## 🧰 Technology
 
-Prerequisites: Node.js with npm, Python 3.12+, and uv. Open two terminals, each starting at the repository root.
+| Layer | Responsibility / Technology |
+| --- | --- |
+| Frontend | React, TypeScript, TanStack Start / Router and Query; Vite, Tailwind CSS, shadcn/ui |
+| Backend | Python and FastAPI; uv for dependencies, pytest for tests |
+| API contract | OpenAPI defines request and response shapes |
+| Persistence | SQLite stores users, boards, tasks, sessions, and password-reset tokens |
+
+<a id="quick-start"></a>
+
+## 🚀 Quick start
+
+You need **Node.js with npm**, **Python 3.12+**, and **uv**. Open two terminals, each starting at the repository root.
 
 **Terminal 1 — backend**
 
@@ -57,20 +92,40 @@ npm install
 npm run dev
 ```
 
-Open the local URL printed by Vite. The frontend defaults to `http://127.0.0.1:8000/api`; see the [frontend README](frontend/README.md) for API configuration. Interactive API documentation is available at `http://127.0.0.1:8000/docs` while the backend is running.
+- **Frontend:** open the URL printed by Vite.
+- **Default API:** `http://127.0.0.1:8000/api`
+- **Interactive API docs:** `http://127.0.0.1:8000/docs`
 
-## Testing
+See the [frontend configuration notes](frontend/README.md) and [backend setup](backend/README.md) for environment and database details.
 
-Run the backend suite from the repository root:
+## 🗂️ Project structure
+
+```text
+flowly/
+├── frontend/          # UI and API services
+├── backend/           # API, SQLite storage, and tests
+├── _docs/
+│   ├── assets/        # README visuals
+│   └── specs.md       # Product specification
+├── openapi.yaml       # API contract
+├── AGENTS.md          # Development guidelines
+└── README.md
+```
+
+<a id="testing"></a>
+
+## 🧪 Testing
+
+**Backend** — from the repository root:
 
 ```sh
 cd backend
 uv run pytest
 ```
 
-Tests cover API contract responses, authentication, ownership, task ordering, transaction rollback, and persistence across new application instances.
+The last verified backend run passed **39 tests**, covering API responses, authentication, ownership, task ordering, rollback, and persistence across new application instances. The badge above records that result; it is not a live CI status.
 
-For frontend type and build checks, start from the repository root:
+**Frontend** — from the repository root:
 
 ```sh
 cd frontend
@@ -78,23 +133,24 @@ npx tsc --noEmit
 npm run build
 ```
 
-## Documentation
+## 📚 Documentation
 
-- [`_docs/specs.md`](_docs/specs.md) — product specification
-- [`openapi.yaml`](openapi.yaml) — API contract
-- [`frontend/README.md`](frontend/README.md) — frontend setup and implementation notes
-- [`backend/README.md`](backend/README.md) — backend, database, auth, and API details
+| Document | Contents |
+| --- | --- |
+| [Product specification](_docs/specs.md) | Product behavior and v1 scope |
+| [API contract](openapi.yaml) | Frontend/backend request and response definitions |
+| [Frontend README](frontend/README.md) | Setup, API configuration, sessions, and implementation notes |
+| [Backend README](backend/README.md) | API, authentication, database, persistence, and test details |
+| [Development guidelines](AGENTS.md) | Repository conventions and Lovable sync precautions |
 
-## Current limitations
+## 🚧 Current limitations
 
 - Google authentication is a development stub, not production OAuth.
-- Password-reset email delivery is mocked: reset tokens are logged locally.
-- Collaboration and team features are outside the scope of v1.
+- Password-reset delivery is mocked locally: tokens are logged instead of emailed.
+- Collaboration and team features are outside v1.
 
-## Project context
+## 🌱 Project origin
 
-Flowly was developed as a full-stack project while following the DataTalksClub AI Dev Tools Zoomcamp.
+Built while following the **DataTalksClub AI Dev Tools Zoomcamp**, with Lovable for initial frontend prototyping and Codex/local agent work for later full-stack development.
 
-## Lovable
-
-The project is connected to the [Lovable editor](https://lovable.dev/projects/f0d7cabb-3649-46f3-8e8e-2f2056adae92). Changes pushed to the connected branch sync back to Lovable; avoid rewriting published Git history. See [AGENTS.md](AGENTS.md) for development guidelines.
+The repository remains connected to the [Lovable editor](https://lovable.dev/projects/f0d7cabb-3649-46f3-8e8e-2f2056adae92). Changes pushed to the connected branch sync back to Lovable; avoid rewriting published Git history.
