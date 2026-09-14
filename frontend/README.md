@@ -39,8 +39,11 @@ For another frontend origin, set the backend's comma-separated
   case server-side revocation could not be confirmed; its token expires normally.
 - Changing accounts clears the query cache; board queries are also keyed by user.
   Cross-tab token changes refresh auth state. API failures are surfaced in the UI.
-- Boards/tasks/accounts live only in backend memory. Reloading the frontend keeps
-  backend data; restarting/reloading the backend deletes it and invalidates tokens.
+- Users, boards, tasks, sessions, and password-reset tokens are persisted in SQLite.
+  The default database file is `backend/data/flowly.sqlite3`. Data survives backend
+  restarts; sessions and reset tokens retain their expiry and revocation rules.
+  Rate-limit counters and the development email outbox remain in memory and clear
+  on restart. See the [backend README](../backend/README.md) for database details.
 - Filters, temporary sorting, board summaries and per-device view preferences stay
   client-side. Preference storage uses the existing `flowly:view-preferences` key.
 
