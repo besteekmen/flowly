@@ -1,6 +1,7 @@
 # Flowly frontend
 
-The existing UI now calls the FastAPI backend through `src/services/`.
+The UI calls the FastAPI backend through `src/services/`.
+Flowly v1 uses a light-only palette, independent of the device color scheme.
 Start the backend in a separate terminal:
 
 ```sh
