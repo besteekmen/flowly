@@ -23,15 +23,21 @@
 <table>
   <tr>
     <th>Desktop board</th>
-    <th>Mobile view · optional</th>
+    <th>Mobile view</th>
   </tr>
   <tr>
-    <td align="center"><strong>Screenshot placeholder</strong><br />Add the three-column board with sample tasks here.</td>
-    <td align="center"><strong>Screenshot placeholder</strong><br />Add the mobile board and task move controls here.</td>
+    <td align="center">
+      <img src="_docs/assets/flowly-desktop.png"
+           alt="Flowly desktop Kanban board"
+           width="760">
+    </td>
+    <td align="center">
+      <img src="_docs/assets/flowly-mobile.png"
+           alt="Flowly mobile Kanban board"
+           width="280">
+    </td>
   </tr>
 </table>
-
-<!-- Replace the placeholder cells with relative image links once screenshots are added. -->
 
 <a id="features"></a>
 
